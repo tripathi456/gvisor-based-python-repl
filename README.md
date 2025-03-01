@@ -2,30 +2,6 @@
 
 A secure, isolated Python REPL (Read-Eval-Print Loop) environment for executing untrusted code in LLM-based workflows.
 
-## Introduction
-
-This project provides a secure execution environment for running Python code in the context of Large Language Model (LLM) applications. It leverages gVisor, a container sandbox technology, to create an isolated execution environment that protects the host system from potentially malicious or unintended code execution.
-
-The primary goal is to enable safe execution of user-provided or LLM-generated code while maintaining strong security boundaries. This is particularly important in AI applications where models might generate or execute code that could potentially harm the underlying system.
-
-## Architecture
-
-The system consists of several key components:
-
-1. **TCP Server**: A Python TCP server that accepts code execution requests and maintains stateful sessions.
-2. **Docker Container**: Provides containerization for the Python environment.
-3. **gVisor Runtime**: Adds an additional layer of isolation by intercepting and filtering system calls.
-
-The architecture follows a defense-in-depth approach, with multiple layers of isolation to prevent security breaches.
-
-## File Descriptions
-
-- `server.py`: The main Python file that implements a TCP server which executes Python code sent via TCP connections. It maintains stateful sessions with unique IDs, allowing variables and functions defined in one execution to be available in subsequent executions within the same session.
-- `run.sh`: A shell script that runs the Python server inside a Docker container using gVisor's runsc runtime for isolation. It mounts the server.py file into the container and exposes port 8000.
-- `test.sh`: A shell script that runs the test_tcp.py script to test the server.
-- `test_tcp.py`: A Python script that tests the TCP server by connecting to it, sending Python code to execute, and demonstrating session persistence.
-- `.gitignore`: A configuration file that specifies files to be ignored by version control.
-
 ## Setup Instructions
 
 ### Prerequisites
@@ -35,8 +11,15 @@ The architecture follows a defense-in-depth approach, with multiple layers of is
 
 ### Installation
 
-1. Install gVisor:
+1. Install [gVisor](https://gvisor.dev/docs/user_guide/install/):
    ```bash
+   sudo apt-get update && \
+   sudo apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg
+
    # Install runsc
    curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null
@@ -45,17 +28,7 @@ The architecture follows a defense-in-depth approach, with multiple layers of is
 
 2. Configure Docker to use gVisor:
    ```bash
-   sudo mkdir -p /etc/docker
-   cat <<EOF | sudo tee /etc/docker/daemon.json
-   {
-     "runtimes": {
-       "runsc": {
-         "path": "/usr/bin/runsc",
-         "runtimeArgs": []
-       }
-     }
-   }
-   EOF
+   sudo runsc install
    sudo systemctl restart docker
    ```
 
@@ -82,10 +55,10 @@ This will start a Docker container with the Python server running on port 8000.
 You can test the server using the provided test.sh script:
 
 ```bash
-./test.sh
+python test_concurrent_clients.py
 ```
 
-This will run the test_tcp.py script, which connects to the server, sends Python code to execute, and demonstrates session persistence.
+This will run the `test_concurrent_clients.py` script, which connects to the server, sends Python code to execute, and demonstrates session persistence. See the output in [TEST_OUTPUT.md](./TEST_OUTPUT.md) for details.
 
 ### TCP Protocol
 
@@ -116,69 +89,30 @@ The server uses a simple protocol for communication:
    - If a `session_id` is provided, the code is executed in the context of that session.
    - If the provided `session_id` doesn't exist, an error is returned.
 
-### Python Client Example
 
-Here's a simple example of how to use the server from Python:
+## Introduction
 
-```python
-import socket
-import json
+This project provides a secure execution environment for running Python code in the context of Large Language Model (LLM) applications. It leverages gVisor, a container sandbox technology, to create an isolated execution environment that protects the host system from potentially malicious or unintended code execution.
 
-def send_code(sock, code, session_id=None):
-    # Prepare request
-    request = {"code": code}
-    if session_id:
-        request["session_id"] = session_id
-    
-    # Convert to JSON and encode
-    request_json = json.dumps(request)
-    request_bytes = request_json.encode('utf-8')
-    
-    # Send message length first (4 bytes)
-    length = len(request_bytes)
-    sock.sendall(length.to_bytes(4, byteorder='big'))
-    
-    # Send the actual message
-    sock.sendall(request_bytes)
-    
-    # Receive response length (4 bytes)
-    length_bytes = sock.recv(4)
-    message_length = int.from_bytes(length_bytes, byteorder='big')
-    
-    # Receive the actual response
-    response_bytes = b''
-    while len(response_bytes) < message_length:
-        chunk = sock.recv(min(4096, message_length - len(response_bytes)))
-        if not chunk:
-            break
-        response_bytes += chunk
-    
-    # Parse and return the response
-    response_json = response_bytes.decode('utf-8')
-    return json.loads(response_json)
+The primary goal is to enable safe execution of user-provided or LLM-generated code while maintaining strong security boundaries. This is particularly important in AI applications where models might generate or execute code that could potentially harm the underlying system.
 
-# Connect to the server
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect(("localhost", 8000))
+## Architecture
 
-# Receive initial greeting
-greeting = sock.recv(1024)
-print(f"Server greeting: {greeting.decode('utf-8')}")
+The system consists of several key components:
 
-# Execute code in a new session
-response = send_code(sock, "x = 42\nprint(f'x = {x}')")
-print(f"Response: {json.dumps(response, indent=2)}")
+1. **TCP Server**: A Python TCP server that accepts code execution requests and maintains stateful sessions.
+2. **Docker Container**: Provides containerization for the Python environment.
+3. **gVisor Runtime**: Adds an additional layer of isolation by intercepting and filtering system calls.
 
-# Save the session ID for later use
-session_id = response.get("session_id")
+The architecture follows a defense-in-depth approach, with multiple layers of isolation to prevent security breaches.
 
-# Execute more code in the same session
-response = send_code(sock, "y = x * 2\nprint(f'y = {y}')", session_id)
-print(f"Response: {json.dumps(response, indent=2)}")
+## File Descriptions
 
-# Close the connection
-sock.close()
-```
+- `server.py`: The main Python file that implements a TCP server which executes Python code sent via TCP connections. It maintains stateful sessions with unique IDs, allowing variables and functions defined in one execution to be available in subsequent executions within the same session.
+- `run.sh`: A shell script that runs the Python server inside a Docker container using gVisor's runsc runtime for isolation. It mounts the server.py file into the container and exposes port 8000.
+- `test.sh`: A shell script that runs the test_tcp.py script to test the server.
+- `test_tcp.py`: A Python script that tests the TCP server by connecting to it, sending Python code to execute, and demonstrating session persistence.
+- `.gitignore`: A configuration file that specifies files to be ignored by version control.
 
 ## Significance in LLM-based Workflows
 
