@@ -20,10 +20,12 @@ The architecture follows a defense-in-depth approach, with multiple layers of is
 
 ## File Descriptions
 
-- `server.py`: The main Python file that implements a TCP server which executes Python code sent via TCP connections. It maintains stateful sessions with unique IDs, allowing variables and functions defined in one execution to be available in subsequent executions within the same session.
-- `run.sh`: A shell script that runs the Python server inside a Docker container using gVisor's runsc runtime for isolation. It mounts the server.py file into the container and exposes port 8000.
-- `test.sh`: A shell script that runs the test_tcp.py script to test the server.
+- `server.py`: The main Python file that implements both TCP and WebSocket servers which execute Python code sent via connections. It maintains stateful sessions with unique IDs, allowing variables and functions defined in one execution to be available in subsequent executions within the same session.
+- `run.sh`: A shell script that runs the Python server inside a Docker container using gVisor's runsc runtime for isolation. It mounts the server.py file into the container and exposes ports 8000 (TCP) and 8001 (WebSocket).
+- `test.sh`: A shell script that runs the test_tcp.py script to test the TCP server.
 - `test_tcp.py`: A Python script that tests the TCP server by connecting to it, sending Python code to execute, and demonstrating session persistence.
+- `test_ws.sh`: A shell script that runs the test_ws.py script to test the WebSocket server.
+- `test_ws.py`: A Python script that tests the WebSocket server by connecting to it, sending Python code to execute, and demonstrating session persistence.
 - `.gitignore`: A configuration file that specifies files to be ignored by version control.
 
 ## Setup Instructions
@@ -115,6 +117,91 @@ The server uses a simple protocol for communication:
    - If no `session_id` is provided in the request, a new session is created with a unique ID.
    - If a `session_id` is provided, the code is executed in the context of that session.
    - If the provided `session_id` doesn't exist, an error is returned.
+
+### WebSocket Protocol
+
+The server also supports WebSocket connections on port 8001. The WebSocket protocol is simpler than the TCP protocol since WebSockets handle message framing automatically.
+
+1. **Request Format**:
+   ```json
+   {
+     "code": "Python code to execute",
+     "session_id": "optional-session-id"
+   }
+   ```
+
+2. **Response Format**:
+   ```json
+   {
+     "status": "ok|error",
+     "output": "execution output (if status is ok)",
+     "error": "error message (if status is error)",
+     "session_id": "session-id"
+   }
+   ```
+
+3. **Session Management**:
+   - If no `session_id` is provided in the request, a new session is created with a unique ID.
+   - If a `session_id` is provided, the code is executed in the context of that session.
+   - If the provided `session_id` doesn't exist, an error is returned.
+
+### Testing WebSocket Connection
+
+You can test the WebSocket connection using the provided test_ws.sh script:
+
+```bash
+./test_ws.sh
+```
+
+This will run the test_ws.py script, which connects to the server via WebSocket, sends Python code to execute, and demonstrates session persistence.
+
+### Python WebSocket Client Example
+
+Here's a simple example of how to use the server from Python with WebSockets:
+
+```python
+import asyncio
+import websockets
+import json
+
+async def send_code(websocket, code, session_id=None):
+    # Prepare request
+    request = {"code": code}
+    if session_id:
+        request["session_id"] = session_id
+    
+    # Convert to JSON
+    request_json = json.dumps(request)
+    
+    # Send the message
+    await websocket.send(request_json)
+    
+    # Receive the response
+    response_json = await websocket.recv()
+    return json.loads(response_json)
+
+async def main():
+    # Connect to the server
+    uri = "ws://localhost:8001"
+    async with websockets.connect(uri) as websocket:
+        # Receive initial greeting
+        greeting = await websocket.recv()
+        print(f"Server greeting: {greeting}")
+        
+        # Execute code in a new session
+        response = await send_code(websocket, "x = 42\nprint(f'x = {x}')")
+        print(f"Response: {json.dumps(response, indent=2)}")
+        
+        # Save the session ID for later use
+        session_id = response.get("session_id")
+        
+        # Execute more code in the same session
+        response = await send_code(websocket, "y = x * 2\nprint(f'y = {y}')", session_id)
+        print(f"Response: {json.dumps(response, indent=2)}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
 
 ### Python Client Example
 
