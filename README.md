@@ -13,16 +13,19 @@ The primary goal is to enable safe execution of user-provided or LLM-generated c
 The system consists of several key components:
 
 1. **HTTP Server**: A simple Python HTTP server that accepts code via POST requests and executes it in a persistent environment.
-2. **Docker Container**: Provides containerization for the Python environment.
-3. **gVisor Runtime**: Adds an additional layer of isolation by intercepting and filtering system calls.
+2. **WebSocket Server**: A WebSocket server that allows for real-time code execution and result streaming.
+3. **Docker Container**: Provides containerization for the Python environment.
+4. **gVisor Runtime**: Adds an additional layer of isolation by intercepting and filtering system calls.
 
 The architecture follows a defense-in-depth approach, with multiple layers of isolation to prevent security breaches.
 
 ## File Descriptions
 
-- `server.py`: The main Python file that implements an HTTP server which executes Python code sent via POST requests. It maintains a persistent execution environment, allowing variables defined in one execution to be available in subsequent executions.
-- `run.sh`: A shell script that runs the Python server inside a Docker container using gVisor's runsc runtime for isolation. It mounts the server.py file into the container and exposes port 8000.
-- `test.sh`: A simple shell script that tests the server by sending a POST request with Python code to execute.
+- `server.py`: The main Python file that implements both HTTP and WebSocket servers for executing Python code. It maintains a persistent execution environment, allowing variables defined in one execution to be available in subsequent executions.
+- `run.sh`: A shell script that runs the Python server inside a Docker container using gVisor's runsc runtime for isolation. It mounts the server.py file into the container and exposes ports 8000 (HTTP) and 8001 (WebSocket).
+- `test.sh`: A simple shell script that tests the HTTP server by sending a POST request with Python code to execute.
+- `test_ws.py`: A Python script that tests the WebSocket server by connecting to it and sending Python code to execute.
+- `test_ws.sh`: A shell script that installs the required dependencies and runs the test_ws.py script.
 - `.gitignore`: A configuration file that specifies files to be ignored by version control.
 
 ## Setup Instructions
@@ -74,11 +77,26 @@ Execute the run.sh script to start the server:
 ./run.sh
 ```
 
-This will start a Docker container with the Python server running on port 8000.
+This will start a Docker container with the Python server running on port 8000 (HTTP) and port 8001 (WebSocket).
 
-### Testing the Server
+### Command-line Arguments
 
-You can test the server using the provided test.sh script:
+The server supports the following command-line arguments:
+
+- `--tcp`: Enable the HTTP server (default: enabled if neither --tcp nor --ws is specified)
+- `--ws`: Enable the WebSocket server (default: enabled if neither --tcp nor --ws is specified)
+- `--tcp-port PORT`: Set the HTTP server port (default: 8000)
+- `--ws-port PORT`: Set the WebSocket server port (default: 8001)
+- `--host HOST`: Set the host to bind to (default: 0.0.0.0)
+
+Example:
+```bash
+python server.py --tcp --ws --tcp-port 8000 --ws-port 8001
+```
+
+### Testing the HTTP Server
+
+You can test the HTTP server using the provided test.sh script:
 
 ```bash
 ./test.sh
@@ -86,7 +104,19 @@ You can test the server using the provided test.sh script:
 
 This will send a simple Python print statement to the server and display the result.
 
+### Testing the WebSocket Server
+
+You can test the WebSocket server using the provided test_ws.sh script:
+
+```bash
+./test_ws.sh
+```
+
+This will connect to the WebSocket server, send Python code to execute, and display the results.
+
 ### API Usage
+
+#### HTTP API
 
 Send code to execute:
 
@@ -118,6 +148,35 @@ response = requests.post(
 print(response.json())
 ```
 
+#### WebSocket API
+
+Connect to the WebSocket server and send code to execute:
+
+```python
+import asyncio
+import websockets
+import json
+
+async def execute_code():
+    uri = "ws://localhost:8001"
+    async with websockets.connect(uri) as websocket:
+        # Send Python code to execute
+        code = "print('Hello from WebSocket')"
+        await websocket.send(code)
+        
+        # Receive the result
+        response = await websocket.recv()
+        result = json.loads(response)
+        
+        print("Response status:", result["status"])
+        if result["status"] == "ok":
+            print("Output:", result["output"])
+        else:
+            print("Error:", result["error"])
+
+asyncio.run(execute_code())
+```
+
 ## Significance in LLM-based Workflows
 
 This project addresses several key challenges in LLM-based workflows:
@@ -132,13 +191,15 @@ This project addresses several key challenges in LLM-based workflows:
 
 5. **Reduced Context Window Usage**: By maintaining state between executions, there's no need to include the entire execution history in the LLM's context window.
 
+6. **Multiple Connection Methods**: Supports both HTTP and WebSocket connections, allowing for different integration patterns based on the use case.
+
 ## Security Considerations
 
 This project implements several layers of security:
 
 1. **Container Isolation**: Docker provides basic isolation from the host system.
 2. **gVisor Sandbox**: Adds an additional layer of security by intercepting and filtering system calls.
-3. **HTTP Interface**: Limits interaction to a simple HTTP API, reducing attack surface.
+3. **HTTP/WebSocket Interface**: Limits interaction to simple HTTP and WebSocket APIs, reducing attack surface.
 
 ### Security Limitations
 
