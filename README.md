@@ -12,7 +12,7 @@ The primary goal is to enable safe execution of user-provided or LLM-generated c
 
 The system consists of several key components:
 
-1. **HTTP Server**: A simple Python HTTP server that accepts code via POST requests and executes it in a persistent environment.
+1. **TCP Server**: A Python TCP server that accepts code execution requests and maintains stateful sessions.
 2. **Docker Container**: Provides containerization for the Python environment.
 3. **gVisor Runtime**: Adds an additional layer of isolation by intercepting and filtering system calls.
 
@@ -20,9 +20,10 @@ The architecture follows a defense-in-depth approach, with multiple layers of is
 
 ## File Descriptions
 
-- `server.py`: The main Python file that implements an HTTP server which executes Python code sent via POST requests. It maintains a persistent execution environment, allowing variables defined in one execution to be available in subsequent executions.
+- `server.py`: The main Python file that implements a TCP server which executes Python code sent via TCP connections. It maintains stateful sessions with unique IDs, allowing variables and functions defined in one execution to be available in subsequent executions within the same session.
 - `run.sh`: A shell script that runs the Python server inside a Docker container using gVisor's runsc runtime for isolation. It mounts the server.py file into the container and exposes port 8000.
-- `test.sh`: A simple shell script that tests the server by sending a POST request with Python code to execute.
+- `test.sh`: A shell script that runs the test_tcp.py script to test the server.
+- `test_tcp.py`: A Python script that tests the TCP server by connecting to it, sending Python code to execute, and demonstrating session persistence.
 - `.gitignore`: A configuration file that specifies files to be ignored by version control.
 
 ## Setup Instructions
@@ -84,38 +85,99 @@ You can test the server using the provided test.sh script:
 ./test.sh
 ```
 
-This will send a simple Python print statement to the server and display the result.
+This will run the test_tcp.py script, which connects to the server, sends Python code to execute, and demonstrates session persistence.
 
-### API Usage
+### TCP Protocol
 
-Send code to execute:
+The server uses a simple protocol for communication:
 
-```bash
-curl -X POST http://localhost:8000/exec -d "print('Hello, World!')"
-```
+1. **Message Format**: Each message (request or response) is prefixed with a 4-byte length field (big-endian), followed by the actual message content encoded as UTF-8 JSON.
 
-Or using Python:
+2. **Request Format**:
+   ```json
+   {
+     "code": "Python code to execute",
+     "session_id": "optional-session-id"
+   }
+   ```
+
+3. **Response Format**:
+   ```json
+   {
+     "status": "ok|error",
+     "output": "execution output (if status is ok)",
+     "error": "error message (if status is error)",
+     "session_id": "session-id"
+   }
+   ```
+
+4. **Session Management**:
+   - If no `session_id` is provided in the request, a new session is created with a unique ID.
+   - If a `session_id` is provided, the code is executed in the context of that session.
+   - If the provided `session_id` doesn't exist, an error is returned.
+
+### Python Client Example
+
+Here's a simple example of how to use the server from Python:
 
 ```python
-import requests
+import socket
+import json
 
-code = """
-def fibonacci(n):
-    a, b = 0, 1
-    for _ in range(n):
-        a, b = b, a + b
-    return a
+def send_code(sock, code, session_id=None):
+    # Prepare request
+    request = {"code": code}
+    if session_id:
+        request["session_id"] = session_id
+    
+    # Convert to JSON and encode
+    request_json = json.dumps(request)
+    request_bytes = request_json.encode('utf-8')
+    
+    # Send message length first (4 bytes)
+    length = len(request_bytes)
+    sock.sendall(length.to_bytes(4, byteorder='big'))
+    
+    # Send the actual message
+    sock.sendall(request_bytes)
+    
+    # Receive response length (4 bytes)
+    length_bytes = sock.recv(4)
+    message_length = int.from_bytes(length_bytes, byteorder='big')
+    
+    # Receive the actual response
+    response_bytes = b''
+    while len(response_bytes) < message_length:
+        chunk = sock.recv(min(4096, message_length - len(response_bytes)))
+        if not chunk:
+            break
+        response_bytes += chunk
+    
+    # Parse and return the response
+    response_json = response_bytes.decode('utf-8')
+    return json.loads(response_json)
 
-result = fibonacci(10)
-print(f"The 10th Fibonacci number is {result}")
-"""
+# Connect to the server
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(("localhost", 8000))
 
-response = requests.post(
-    "http://localhost:8000/exec",
-    data=code
-)
+# Receive initial greeting
+greeting = sock.recv(1024)
+print(f"Server greeting: {greeting.decode('utf-8')}")
 
-print(response.json())
+# Execute code in a new session
+response = send_code(sock, "x = 42\nprint(f'x = {x}')")
+print(f"Response: {json.dumps(response, indent=2)}")
+
+# Save the session ID for later use
+session_id = response.get("session_id")
+
+# Execute more code in the same session
+response = send_code(sock, "y = x * 2\nprint(f'y = {y}')", session_id)
+print(f"Response: {json.dumps(response, indent=2)}")
+
+# Close the connection
+sock.close()
 ```
 
 ## Significance in LLM-based Workflows
@@ -124,7 +186,7 @@ This project addresses several key challenges in LLM-based workflows:
 
 1. **Code Execution Safety**: Provides a secure environment for executing potentially untrusted code generated by LLMs.
 
-2. **Persistent State**: Maintains state between executions, allowing for multi-step code generation and execution workflows.
+2. **Persistent State**: Maintains state between executions through session management, allowing for multi-step code generation and execution workflows.
 
 3. **Isolation**: Ensures that code execution cannot affect the host system, even if the code is malicious or contains vulnerabilities.
 
@@ -138,7 +200,7 @@ This project implements several layers of security:
 
 1. **Container Isolation**: Docker provides basic isolation from the host system.
 2. **gVisor Sandbox**: Adds an additional layer of security by intercepting and filtering system calls.
-3. **HTTP Interface**: Limits interaction to a simple HTTP API, reducing attack surface.
+3. **TCP Interface**: Limits interaction to a simple TCP API, reducing attack surface.
 
 ### Security Limitations
 
