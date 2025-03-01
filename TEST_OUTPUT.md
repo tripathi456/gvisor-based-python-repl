@@ -4,70 +4,9 @@ in first terminal
 bash run.sh
 ```
 
-
 ---
 
 concurrent clients are stateful but isolated
-
-```bash
-❯ python test_concurrent_clients.py
-Starting client threads...
-Client B: Connected to localhost:8000
-Client A: Connected to localhost:8000
-Client A: Server greeting received
-Client A: Creating a new session
-Client B: Server greeting received
-Client B: Creating a new session
-Client A: Session ID: 7e5c0e5f-b3b9-4e9a-9462-f739e0130603
-Client A: Defining a function
-Client B: Session ID: 571dcdd7-8bf7-42ff-af4d-64b20fda90cd
-Client B: Defining a function
-Client A: Creating a unique variable
-Client B: Creating a unique variable
-Client A: Verifying unique variable
-Client B: Verifying unique variable
-Client B: Connection closed
-Client A: Connection closed
-Both client threads completed
-
---- Testing Cross-Session Access ---
-Attempting to access Client A's variable 'unique_value_A' from Client B's session
-Result: Error: name 'unique_value_A' is not defined
-
-Attempting to access Client B's variable 'unique_value_B' from Client B's session (should succeed)
-Result: Client B variable unique_value_B: 08c46eb0
-
-
---- Test Results Summary ---
-Client A Session ID: 7e5c0e5f-b3b9-4e9a-9462-f739e0130603
-Client A Variable Name: unique_value_A
-Client A Unique Value: b285170e
-Client A Outputs:
-  Step 1: Client A initialized
-  Step 2:
-  Step 3: Set unique_value_A to b285170e
-  Step 4: unique_value_A is b285170e
-
-Client B Session ID: 571dcdd7-8bf7-42ff-af4d-64b20fda90cd
-Client B Variable Name: unique_value_B
-Client B Unique Value: 08c46eb0
-Client B Outputs:
-  Step 1: Client B initialized
-  Step 2:
-  Step 3: Set unique_value_B to 08c46eb0
-  Step 4: unique_value_B is 08c46eb0
-
-Cross-Session Access Result (B trying to access A's variable): Error: name 'unique_value_A' is not defined
-Same-Session Access Result (B accessing its own variable): Client B variable unique_value_B: 08c46eb0
-
-Session isolation verified: Client B cannot access Client A's variables
-
-
-```
-
----
-
-Enhanced test with common variable name testing
 
 ```bash
 ❯ python test_concurrent_clients.py
