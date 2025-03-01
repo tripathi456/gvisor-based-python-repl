@@ -37,6 +37,29 @@ def send_receive(sock, request_dict):
     response_json = b''.join(chunks).decode('utf-8')
     return json.loads(response_json)
 
+def receive_response(sock):
+    """Receive a response from the server using the length-prefixed protocol."""
+    # Receive response length (4 bytes)
+    length_bytes = sock.recv(4)
+    if not length_bytes:
+        return None
+    
+    # Convert bytes to integer
+    message_length = int.from_bytes(length_bytes, byteorder='big')
+    
+    # Receive the actual response
+    chunks = []
+    bytes_received = 0
+    while bytes_received < message_length:
+        chunk = sock.recv(min(4096, message_length - bytes_received))
+        if not chunk:
+            raise ConnectionError("Connection closed while receiving data")
+        chunks.append(chunk)
+        bytes_received += len(chunk)
+    
+    response_json = b''.join(chunks).decode('utf-8')
+    return json.loads(response_json)
+
 def main():
     # Server connection details
     host = "localhost"
@@ -48,9 +71,9 @@ def main():
         sock.connect((host, port))
         print(f"Connected to {host}:{port}")
         
-        # Receive initial greeting
-        greeting = sock.recv(1024)
-        print(f"Server greeting: {greeting.decode('utf-8')}")
+        # Receive initial greeting using the length-prefixed protocol
+        greeting = receive_response(sock)
+        print(f"Server greeting: {json.dumps(greeting, indent=2)}")
         
         # Test 1: Execute code without a session ID (creates a new session)
         print("\n--- Test 1: Execute code without a session ID ---")
