@@ -8,6 +8,7 @@ from forevervm_minimal.worker_manager import WorkerManager
 from forevervm_minimal.snapshot_storage import SnapshotStorage
 from forevervm_minimal.custom_serializer import Serializer
 from forevervm_minimal.session_data import SessionData
+from forevervm_minimal.config import SESSION_INACTIVITY_TIMEOUT
 
 class SessionManager:
     def __init__(self, snapshot_storage: SnapshotStorage, worker_manager: WorkerManager):
@@ -17,8 +18,8 @@ class SessionManager:
         self.sessions = {}  # dict: session_id -> SessionData
         self.lock = threading.Lock()
         
-        self.inactivity_timeout = 600  # 10 minutes, in seconds
-        
+        self.inactivity_timeout = SESSION_INACTIVITY_TIMEOUT
+
     def create_session(self):
         session_id = str(uuid.uuid4())
         # create a new worker

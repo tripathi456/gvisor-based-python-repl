@@ -4,50 +4,84 @@
 import requests
 import json
 import time
+import logging
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def main():
     base_url = "http://localhost:8000"
     
     # Create a new session
-    print("Creating a new session...")
+    logger.info("Creating a new session...")
     response = requests.post(f"{base_url}/session")
     session_data = response.json()
     session_id = session_data["session_id"]
-    print(f"Session created with ID: {session_id}")
+    logger.info(f"Session created with ID: {session_id}")
     
     # Execute some code in the session
-    print("\nExecuting code to define a variable...")
-    code1 = "x = 42\nprint(f'x = {x}')"
+    logger.info("\nStep 1: Defining initial variables...")
+    code1 = """
+x = 42
+y = [1, 2, 3]
+print(f'Initial state: x = {x}, y = {y}')
+"""
     response = requests.post(
         f"{base_url}/session/{session_id}/execute",
         json={"code": code1}
     )
-    print(f"Response: {response.json()}")
+    logger.info(f"Response: {response.json()}")
     
-    # Execute more code that uses the previously defined variable
-    print("\nExecuting code that uses the previously defined variable...")
-    code2 = "y = x * 2\nprint(f'y = {y}')"
+    # Execute more code to verify state
+    logger.info("\nStep 2: Verifying variable state...")
+    code2 = """
+y.append(x)
+print(f'Updated state: y = {y}')
+"""
     response = requests.post(
         f"{base_url}/session/{session_id}/execute",
         json={"code": code2}
     )
-    print(f"Response: {response.json()}")
+    logger.info(f"Response: {response.json()}")
     
-    # Simulate inactivity (in a real scenario, you'd wait for the inactivity_timeout)
-    print("\nSimulating session inactivity...")
-    print("In a real scenario, you'd wait for the inactivity_timeout (10 minutes by default)")
-    print("For testing, you can modify the inactivity_timeout in session_manager.py to a smaller value")
+    # Wait for session inactivity timeout
+    inactivity_period = 8  # seconds (longer than SESSION_INACTIVITY_TIMEOUT)
+    logger.info(f"\nStep 3: Simulating inactivity for {inactivity_period} seconds...")
+    logger.info("Session should be checkpointed during this time")
+    time.sleep(inactivity_period)
     
-    # Execute code after the "inactivity period" to demonstrate session persistence
-    print("\nExecuting code after the 'inactivity period'...")
-    code3 = "z = x + y\nprint(f'z = {z}')"
+    # Execute code after inactivity to verify session restoration
+    logger.info("\nStep 4: Testing session restoration...")
+    code3 = """
+print(f'Restored state: x = {x}, y = {y}')
+z = sum(y)
+print(f'New computation: sum(y) = {z}')
+"""
     response = requests.post(
         f"{base_url}/session/{session_id}/execute",
         json={"code": code3}
     )
-    print(f"Response: {response.json()}")
+    logger.info(f"Response: {response.json()}")
     
-    print("\nTest completed successfully!")
+    # Final verification
+    logger.info("\nStep 5: Final state verification...")
+    code4 = """
+print(f'Final state check:')
+print(f'x = {x}')
+print(f'y = {y}')
+print(f'z = {z}')
+"""
+    response = requests.post(
+        f"{base_url}/session/{session_id}/execute",
+        json={"code": code4}
+    )
+    logger.info(f"Response: {response.json()}")
+    
+    logger.info("\nTest completed successfully!")
 
 if __name__ == "__main__":
     main()

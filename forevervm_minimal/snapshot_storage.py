@@ -21,7 +21,7 @@ class SnapshotStorage(abc.ABC):
 
 
 class LocalFileStorage(SnapshotStorage):
-    def __init__(self, base_dir="/var/forevervm/snapshots"):
+    def __init__(self, base_dir="./data_dir/snapshots"):
         self.base_dir = base_dir
         os.makedirs(self.base_dir, exist_ok=True)
     

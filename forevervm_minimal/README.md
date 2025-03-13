@@ -16,13 +16,13 @@ ForeverVM allows you to create Python REPL sessions that persist even after peri
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/forevervm-minimal.git
-   cd forevervm-minimal
+   git clone https://github.com/tripathi456/forevervm-minimal.git
+   cd forevervm-minimal/forevervm_minimal
    ```
 
-2. Install the required dependencies:
+2. just run using `uv` (astral's python package manager)
    ```bash
-   pip install flask
+   uv run main.py
    ```
 
 ## Usage
@@ -34,6 +34,21 @@ python -m forevervm_minimal.main
 ```
 
 This will start the HTTP server on port 8000.
+
+### Testing the Server
+
+The repository includes a test client that demonstrates session creation, code execution, and session persistence:
+
+```bash
+python test_client.py
+```
+
+The test client performs the following steps:
+1. Creates a new session
+2. Executes code to define variables
+3. Modifies the session state
+4. Waits for session inactivity timeout (configurable in config.py)
+5. Verifies session restoration after inactivity
 
 ### API Endpoints
 
@@ -65,6 +80,14 @@ Response:
   "output": "Executed: x = 1\nprint(x*2)\n"
 }
 ```
+
+### Configuration
+
+Key settings can be configured through environment variables or in `config.py`:
+- `FOREVERVM_SESSION_TIMEOUT`: Session inactivity timeout (default: 6 seconds)
+- `FOREVERVM_CLEANUP_INTERVAL`: Interval to check for inactive sessions (default: 2 seconds)
+- `FOREVERVM_PORT`: Server port (default: 8000)
+- `FOREVERVM_HOST`: Server host (default: 0.0.0.0)
 
 ## Architecture
 
